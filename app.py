@@ -115,13 +115,6 @@ def _rect(slide, x, y, w, h, fill_color, line_color=None):
     return shape
 
 
-def _oval(slide, x, y, w, h, fill_color):
-    shape = slide.shapes.add_shape(9, x, y, w, h)
-    shape.fill.solid()
-    shape.fill.fore_color.rgb = fill_color
-    shape.line.fill.background()
-    return shape
-
 
 def _textbox(slide, x, y, w, h, text, size, color, bold=False, italic=False,
              align=PP_ALIGN.LEFT, wrap=True):
@@ -150,19 +143,29 @@ def _notes(slide, text):
     if text:
         slide.notes_slide.notes_text_frame.text = text
 
+# ─── Efficient multi-paragraph helper ─────────────────────────────────────────
+
+def _bullets_textbox(slide, x, y, w, h, items, size, color, prefix="  •  ", space_after=Pt(6)):
+    """Single textbox containing all bullet items — far fewer shapes than one-per-bullet."""
+    tb = slide.shapes.add_textbox(x, y, w, h)
+    tf = tb.text_frame
+    tf.word_wrap = True
+    for i, item in enumerate(items):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.text = f"{prefix}{item}"
+        p.font.size = size
+        p.font.color.rgb = color
+        p.space_after = space_after
+    return tb
+
 # ─── Individual Slide Builders ────────────────────────────────────────────────
 
 def _title_slide(prs, data):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-
+    # 4 shapes total
     _rect(slide, 0, 0, W, H, C["primary"])
     _rect(slide, 0, Inches(5.4), W, Inches(2.1), C["darkblue"])
     _rect(slide, Inches(1.0), Inches(5.25), Inches(11.33), Inches(0.07), C["accent"])
-
-    # Decorative circles (background art)
-    _oval(slide, Inches(10.5), Inches(-0.5), Inches(3.5), Inches(3.5), C["midblue"])
-    _oval(slide, Inches(11.5), Inches(5.5), Inches(2.5), Inches(2.5), C["midblue"])
-
     _textbox(slide, Inches(1.0), Inches(1.4), Inches(10.5), Inches(2.8),
              data["title"], 44, C["white"], bold=True, wrap=True)
     _textbox(slide, Inches(1.0), Inches(4.3), Inches(10.5), Inches(0.9),
@@ -172,151 +175,96 @@ def _title_slide(prs, data):
 
 
 def _agenda_slide(prs, data):
+    # 4 shapes total (was 2 + 2×N)
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _rect(slide, 0, 0, W, H, C["white"])
     _header(slide, "📋  What We'll Cover Today")
     _rect(slide, Inches(0.5), Inches(1.6), Inches(0.07), Inches(5.5), C["accent"])
-
-    for i, item in enumerate(data.get("agenda", [])[:7]):
-        y = Inches(1.7 + i * 0.72)
-        num = _oval(slide, Inches(0.75), y, Inches(0.44), Inches(0.44), C["primary"])
-        num_tf = num.text_frame
-        p = num_tf.paragraphs[0]
-        p.text = str(i + 1)
-        p.font.color.rgb = C["white"]
-        p.font.size = Pt(12)
-        p.font.bold = True
-        p.alignment = PP_ALIGN.CENTER
-        _textbox(slide, Inches(1.4), y + Inches(0.05), Inches(11.0), Inches(0.5),
-                 item, 18, C["dark"])
-
+    items = [f"{i+1}.  {item}" for i, item in enumerate(data.get("agenda", [])[:7])]
+    _bullets_textbox(slide, Inches(1.0), Inches(1.7), Inches(11.5), Inches(5.4),
+                     items, Pt(19), C["dark"], prefix="", space_after=Pt(10))
     _notes(slide, "Walk through the agenda. Let students know what they'll learn and why it matters.")
 
 
 def _content_slide(prs, slide_data):
+    # 5 shapes total (was 2 + 2×N + 2)
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _rect(slide, 0, 0, W, H, C["white"])
-    _header(slide, slide_data["title"])
-
-    emoji = slide_data.get("emoji", "📌")
-    _textbox(slide, Inches(11.3), Inches(0.05), Inches(1.8), Inches(1.3),
-             emoji, 40, C["white"], align=PP_ALIGN.CENTER)
-
+    _header(slide, f"{slide_data.get('emoji','📌')}  {slide_data['title']}")
     points = slide_data.get("key_points", [])
-    for i, point in enumerate(points[:5]):
-        y = Inches(1.65 + i * 0.88)
-        dot = _oval(slide, Inches(0.4), y + Inches(0.12), Inches(0.2), Inches(0.2), C["accent"])
-        _textbox(slide, Inches(0.8), y, Inches(12.1), Inches(0.75),
-                 point, 19, C["dark"], wrap=True)
-
+    if points:
+        _bullets_textbox(slide, Inches(0.6), Inches(1.6), Inches(12.1), Inches(5.0),
+                         points[:5], Pt(19), C["dark"])
     example = slide_data.get("example", "")
     if example:
-        box_y = Inches(1.65 + len(points[:5]) * 0.88 + 0.1)
-        if box_y < Inches(6.5):
-            _rect(slide, Inches(0.4), box_y, Inches(12.5), Inches(0.06), C["secondary"])
-            _textbox(slide, Inches(0.4), box_y + Inches(0.12), Inches(12.5), Inches(0.7),
-                     f"💡 {example}", 14, C["secondary"], italic=True, wrap=True)
-
+        _textbox(slide, Inches(0.5), Inches(6.5), Inches(12.33), Inches(0.65),
+                 f"💡  {example}", 13, C["secondary"], italic=True, wrap=True)
     _rect(slide, 0, Inches(7.35), W, Inches(0.15), C["secondary"])
     _notes(slide, slide_data.get("speaker_notes", ""))
 
 
 def _example_slide(prs, slide_data):
+    # 5 shapes total (was 5 + N)
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _rect(slide, 0, 0, W, H, C["light"])
-    _header(slide, f"💡  {slide_data['title']}", bg=C["secondary"])
-
-    # EXAMPLE tag
-    tag = _oval(slide, Inches(11.1), Inches(0.22), Inches(1.9), Inches(0.42), C["accent"])
-    tag_tf = tag.text_frame
-    p = tag_tf.paragraphs[0]
-    p.text = "EXAMPLE"
-    p.font.color.rgb = C["white"]
-    p.font.size = Pt(12)
-    p.font.bold = True
-    p.alignment = PP_ALIGN.CENTER
-
-    example_text = slide_data.get("example", "Example coming soon.")
+    _header(slide, f"💡  {slide_data['title']} — Example", bg=C["secondary"])
+    example_text = slide_data.get("example", "")
     _rect(slide, Inches(0.5), Inches(1.6), Inches(12.33), Inches(3.0), C["panel"],
           line_color=C["secondary"])
     _textbox(slide, Inches(0.8), Inches(1.75), Inches(11.73), Inches(2.75),
              example_text, 17, C["dark"], wrap=True)
-
     points = slide_data.get("key_points", [])
     if points:
-        _textbox(slide, Inches(0.5), Inches(4.8), Inches(4.0), Inches(0.5),
-                 "✅  Key Points:", 16, C["primary"], bold=True)
-        for i, pt in enumerate(points[:3]):
-            _textbox(slide, Inches(0.6), Inches(5.4 + i * 0.5), Inches(12.1), Inches(0.45),
-                     f"  •  {pt}", 15, C["dark"])
-
+        _bullets_textbox(slide, Inches(0.6), Inches(4.8), Inches(12.1), Inches(2.4),
+                         points[:3], Pt(15), C["dark"], prefix="✅  ")
     _notes(slide, slide_data.get("speaker_notes", ""))
 
 
 def _activity_slide(prs, slide_data):
+    # 5 shapes total (was 7)
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _rect(slide, 0, 0, W, H, C["primary"])
-    _oval(slide, Inches(10.0), Inches(0.3), Inches(3.0), Inches(3.0), C["midblue"])
-    _oval(slide, Inches(-0.5), Inches(5.5), Inches(2.5), Inches(2.5), C["midblue"])
-
     _textbox(slide, Inches(0.5), Inches(0.3), Inches(4.0), Inches(0.6),
              "🎯  ACTIVITY", 16, C["accent"], bold=True)
     _textbox(slide, Inches(0.5), Inches(1.0), Inches(12.0), Inches(1.4),
              slide_data["title"], 34, C["white"], bold=True, wrap=True)
-
     activity_text = slide_data.get("activity") or slide_data.get("example", "Activity coming soon.")
-    _rect(slide, Inches(0.5), Inches(2.55), Inches(12.33), Inches(3.3), C["darkblue"])
-    _textbox(slide, Inches(0.85), Inches(2.75), Inches(11.63), Inches(2.9),
+    _rect(slide, Inches(0.5), Inches(2.55), Inches(12.33), Inches(3.5), C["darkblue"])
+    _textbox(slide, Inches(0.85), Inches(2.75), Inches(11.63), Inches(3.1),
              activity_text, 19, C["white"], wrap=True)
-
     _textbox(slide, Inches(0.5), Inches(6.3), Inches(12.0), Inches(0.7),
              "⏱  Take 3 minutes — then share with the group", 14, C["accent"])
-
     _notes(slide, slide_data.get("speaker_notes", ""))
 
 
 def _summary_slide(prs, data):
+    # 4 shapes total (was 2 + 2×N)
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _rect(slide, 0, 0, W, H, C["white"])
     _header(slide, "🎯  Key Takeaways", bg=C["success"])
-
-    for i, tk in enumerate(data.get("key_takeaways", [])[:5]):
-        y = Inches(1.6 + i * 0.92)
-        num = _oval(slide, Inches(0.4), y, Inches(0.48), Inches(0.48), C["success"])
-        tf = num.text_frame
-        p = tf.paragraphs[0]
-        p.text = str(i + 1)
-        p.font.color.rgb = C["white"]
-        p.font.size = Pt(13)
-        p.font.bold = True
-        p.alignment = PP_ALIGN.CENTER
-        _textbox(slide, Inches(1.1), y + Inches(0.06), Inches(11.73), Inches(0.72),
-                 tk, 18, C["dark"], wrap=True)
-
+    takeaways = [f"{i+1}.  {tk}" for i, tk in enumerate(data.get("key_takeaways", [])[:5])]
+    _bullets_textbox(slide, Inches(0.6), Inches(1.6), Inches(12.1), Inches(4.8),
+                     takeaways, Pt(19), C["dark"], prefix="", space_after=Pt(12))
     questions = data.get("discussion_questions", [])
     if questions:
         _textbox(slide, Inches(0.5), Inches(6.65), Inches(12.33), Inches(0.55),
                  f"💬  Discuss: {questions[0]}", 14, C["secondary"], italic=True, wrap=True)
-
     _notes(slide, "Summarize the key points. Ask students to reflect on what surprised them most.")
 
 
 def _qa_slide(prs, data):
+    # 4 shapes total (was 4 + N)
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _rect(slide, 0, 0, W, H, C["primary"])
-    _oval(slide, Inches(8.8), Inches(0.8), Inches(5.5), Inches(5.5), C["midblue"])
-    _oval(slide, Inches(-1.0), Inches(4.5), Inches(3.0), Inches(3.5), C["midblue"])
-
-    _textbox(slide, Inches(1.5), Inches(1.8), Inches(9.0), Inches(2.2),
+    _textbox(slide, Inches(1.5), Inches(1.5), Inches(9.0), Inches(2.5),
              "Questions?", 62, C["white"], bold=True, align=PP_ALIGN.CENTER)
     _textbox(slide, Inches(1.5), Inches(4.0), Inches(9.0), Inches(0.9),
              "Let's discuss! 🙋", 28, C["accent"], align=PP_ALIGN.CENTER)
-
     questions = data.get("discussion_questions", [])
-    for i, q in enumerate(questions[:3]):
-        _textbox(slide, Inches(1.0), Inches(5.1 + i * 0.5), Inches(11.33), Inches(0.45),
-                 f"  •  {q}", 14, C["lightblue"], align=PP_ALIGN.CENTER, wrap=True)
-
+    if questions:
+        _bullets_textbox(slide, Inches(1.0), Inches(5.1), Inches(11.33), Inches(1.8),
+                         questions[:3], Pt(14), C["lightblue"],
+                         prefix="  •  ", space_after=Pt(4))
     _notes(slide, "Open the floor for questions. Use discussion prompts above to spark conversation if needed.")
 
 # ─── Assemble Presentation ────────────────────────────────────────────────────
