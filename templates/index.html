@@ -631,8 +631,13 @@
         result.style.display = 'block';
 
       } else {
-        const data = await response.json().catch(() => ({ error: 'Unknown server error.' }));
-        throw new Error(data.error || 'Generation failed.');
+        let errMsg = `Server error (HTTP ${response.status}).`;
+        try {
+          const text = await response.text();
+          const data = JSON.parse(text);
+          errMsg = data.error || errMsg;
+        } catch (_) { /* non-JSON response, keep default */ }
+        throw new Error(errMsg);
       }
 
     } catch (err) {
