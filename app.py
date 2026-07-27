@@ -95,7 +95,7 @@ Slide type rules:
 Make it educational, clear, and suitable for {audience}.
 Emoji should match the slide topic visually."""
 
-    resp = client.models.generate_content(model="gemini-flash-latest", contents=prompt)
+    resp = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
     text = resp.text.strip()
     # Strip markdown fences if present
     text = re.sub(r"^```(?:json)?\s*", "", text)
@@ -331,11 +331,18 @@ def generate():
             download_name=filename,
         )
 
-    except json.JSONDecodeError as e:
-        return jsonify({"error": f"AI returned malformed JSON. Try again. ({e})"}), 500
+    except json.JSONDecodeError:
+        return jsonify({"error": "AI returned an unexpected response. Please try again."}), 500
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        msg = str(e)
+        if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
+            return jsonify({"error": "API rate limit reached. Please wait a minute and try again."}), 429
+        if "quota" in msg.lower():
+            return jsonify({"error": "Daily API quota exceeded. Try again tomorrow or use a different API key."}), 429
+        if "API_KEY" in msg or "api key" in msg.lower():
+            return jsonify({"error": "Invalid or missing Gemini API key."}), 500
+        return jsonify({"error": "Something went wrong generating your presentation. Please try again."}), 500
 
 
 @app.errorhandler(500)
