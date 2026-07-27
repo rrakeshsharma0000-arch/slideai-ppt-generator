@@ -3,6 +3,7 @@ import io
 import gc
 import json
 import re
+import time
 import traceback
 
 from flask import Flask, render_template, request, send_file, jsonify
@@ -95,12 +96,31 @@ Slide type rules:
 Make it educational, clear, and suitable for {audience}.
 Emoji should match the slide topic visually."""
 
-    resp = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
-    text = resp.text.strip()
-    # Strip markdown fences if present
-    text = re.sub(r"^```(?:json)?\s*", "", text)
-    text = re.sub(r"\s*```$", "", text)
-    return json.loads(text)
+    models = ["gemini-2.0-flash", "gemini-2.0-flash-lite"]
+    last_err = None
+    for model in models:
+        for attempt in range(2):
+            try:
+                resp = client.models.generate_content(model=model, contents=prompt)
+                text = resp.text.strip()
+                text = re.sub(r"^```(?:json)?\s*", "", text)
+                text = re.sub(r"\s*```$", "", text)
+                return json.loads(text)
+            except Exception as e:
+                last_err = e
+                err_str = str(e)
+                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                    # Extract retry delay if present, default 20s
+                    delay = 20
+                    m = re.search(r"retry.*?(\d+)s", err_str)
+                    if m:
+                        delay = min(int(m.group(1)) + 2, 30)
+                    if attempt == 0:
+                        time.sleep(delay)
+                        continue  # retry same model
+                    break  # try next model
+                raise  # non-rate-limit errors bubble up immediately
+    raise last_err
 
 # ─── Slide Helpers ────────────────────────────────────────────────────────────
 
