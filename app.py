@@ -6,9 +6,9 @@ import re
 import time
 import traceback
 
+import requests as http_requests
 from flask import Flask, render_template, request, send_file, jsonify
 from dotenv import load_dotenv
-from google import genai
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
@@ -42,9 +42,20 @@ H = Inches(7.5)
 
 # ─── AI Content Generation ────────────────────────────────────────────────────
 
-def generate_ppt_content(topic, audience, num_slides, additional_info):
-    client = genai.Client(api_key=GEMINI_API_KEY)
+GEMINI_REST_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
 
+
+def _call_gemini_rest(prompt, model):
+    url = GEMINI_REST_URL.format(model=model, key=GEMINI_API_KEY)
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    resp = http_requests.post(url, json=payload, timeout=80)
+    if resp.status_code == 429:
+        raise Exception(f"429 RESOURCE_EXHAUSTED {resp.text}")
+    resp.raise_for_status()
+    return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+
+
+def generate_ppt_content(topic, audience, num_slides, additional_info):
     prompt = f"""Create a comprehensive, engaging PowerPoint presentation for:
 
 Topic: {topic}
@@ -101,8 +112,8 @@ Emoji should match the slide topic visually."""
     for model in models:
         for attempt in range(2):
             try:
-                resp = client.models.generate_content(model=model, contents=prompt)
-                text = resp.text.strip()
+                text = _call_gemini_rest(prompt, model)
+                text = text.strip()
                 text = re.sub(r"^```(?:json)?\s*", "", text)
                 text = re.sub(r"\s*```$", "", text)
                 return json.loads(text)
