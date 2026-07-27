@@ -1,5 +1,6 @@
 import os
 import io
+import gc
 import json
 import re
 import traceback
@@ -363,7 +364,7 @@ def generate():
             return jsonify({"error": "Please enter a topic."}), 400
 
         audience = request.form.get("audience", "college students").strip()
-        num_slides = max(4, min(int(request.form.get("num_slides", 15)), 50))
+        num_slides = max(4, min(int(request.form.get("num_slides", 10)), 15))
         additional_info = (request.form.get("additional_info") or "").strip()
 
         ppt_data = generate_ppt_content(topic, audience, num_slides, additional_info)
@@ -371,7 +372,8 @@ def generate():
         filename = safe.strip().replace(" ", "_") + ".pptx"
 
         buf = create_presentation(ppt_data)
-        del ppt_data  # free memory before streaming
+        del ppt_data
+        gc.collect()
 
         return send_file(
             buf,
