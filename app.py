@@ -359,13 +359,14 @@ def generate():
         if not GEMINI_API_KEY:
             return jsonify({"error": "GEMINI_API_KEY is not set. Add it to your .env file."}), 500
 
-        topic = (request.form.get("topic") or "").strip()
+        topic = (request.form.get("topic") or "").strip()[:200]
         if not topic:
             return jsonify({"error": "Please enter a topic."}), 400
 
         audience = request.form.get("audience", "college students").strip()
         num_slides = max(4, min(int(request.form.get("num_slides", 10)), 15))
-        additional_info = (request.form.get("additional_info") or "").strip()
+        # Cap additional_info to avoid inflating the prompt and causing timeouts
+        additional_info = (request.form.get("additional_info") or "").strip()[:300]
 
         ppt_data = generate_ppt_content(topic, audience, num_slides, additional_info)
         safe = re.sub(r"[^a-zA-Z0-9 ]", "", ppt_data.get("title", topic))[:40]
