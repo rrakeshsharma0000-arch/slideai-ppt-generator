@@ -367,10 +367,11 @@ def generate():
         additional_info = (request.form.get("additional_info") or "").strip()
 
         ppt_data = generate_ppt_content(topic, audience, num_slides, additional_info)
-        buf = create_presentation(ppt_data)
-
         safe = re.sub(r"[^a-zA-Z0-9 ]", "", ppt_data.get("title", topic))[:40]
         filename = safe.strip().replace(" ", "_") + ".pptx"
+
+        buf = create_presentation(ppt_data)
+        del ppt_data  # free memory before streaming
 
         return send_file(
             buf,
