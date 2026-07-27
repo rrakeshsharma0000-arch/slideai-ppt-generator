@@ -364,7 +364,7 @@ def generate():
             return jsonify({"error": "Please enter a topic."}), 400
 
         audience = request.form.get("audience", "college students").strip()
-        num_slides = max(4, min(int(request.form.get("num_slides", 10)), 15))
+        num_slides = max(4, min(int(request.form.get("num_slides", 10)), 30))
         # Cap additional_info to avoid inflating the prompt and causing timeouts
         additional_info = (request.form.get("additional_info") or "").strip()[:300]
 
