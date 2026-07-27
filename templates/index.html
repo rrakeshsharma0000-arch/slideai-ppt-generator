@@ -396,6 +396,20 @@
     }
     footer a { color: var(--primary); text-decoration: none; }
 
+    .field-error {
+      font-size: 0.78rem;
+      color: var(--danger);
+      margin-top: 4px;
+      display: none;
+    }
+    input.invalid, textarea.invalid {
+      border-color: var(--danger) !important;
+      box-shadow: 0 0 0 3px rgba(231,76,60,0.1) !important;
+    }
+    .char-counter { font-size: 0.78rem; color: #9CA3AF; text-align: right; margin-top: 2px; }
+    .char-counter.warn { color: #F59E0B; }
+    .char-counter.over  { color: var(--danger); font-weight: 600; }
+
     @media (max-width: 600px) {
       .form-grid { grid-template-columns: 1fr; }
       .form-group.full { grid-column: 1; }
@@ -437,8 +451,11 @@
 
           <div class="form-group full">
             <label for="topic">Topic / Subject *</label>
-            <input type="text" id="topic" name="topic" required
-              placeholder="e.g. Climate Change and its Impact on Ecosystems" />
+            <input type="text" id="topic" name="topic" required maxlength="200"
+              placeholder="e.g. Climate Change and its Impact on Ecosystems"
+              oninput="updateCounter('topic', 200)" />
+            <div class="char-counter" id="topic-counter">0 / 200</div>
+            <div class="field-error" id="topic-error">Topic cannot exceed 200 characters.</div>
           </div>
 
           <div class="form-group">
@@ -462,11 +479,12 @@
           </div>
 
           <div class="form-group full">
-            <label for="additional_info">Additional Instructions <span style="font-weight:400;text-transform:none;color:#6B7280">(optional · max 300 chars)</span></label>
+            <label for="additional_info">Additional Instructions <span style="font-weight:400;text-transform:none;color:#6B7280">(optional)</span></label>
             <textarea id="additional_info" name="additional_info" maxlength="300"
               placeholder="e.g. Focus on renewable energy solutions. Include statistics. Keep it beginner-friendly."
-              oninput="document.getElementById('charCount').textContent = this.value.length"></textarea>
-            <div style="font-size:0.78rem;color:#9CA3AF;text-align:right;margin-top:2px"><span id="charCount">0</span> / 300</div>
+              oninput="updateCounter('additional_info', 300)"></textarea>
+            <div class="char-counter" id="additional_info-counter">0 / 300</div>
+            <div class="field-error" id="additional_info-error">Additional instructions cannot exceed 300 characters.</div>
           </div>
 
         </div>
@@ -589,8 +607,48 @@
     });
   }
 
+  function updateCounter(fieldId, max) {
+    const field = document.getElementById(fieldId);
+    const counter = document.getElementById(fieldId + '-counter');
+    const error = document.getElementById(fieldId + '-error');
+    const len = field.value.length;
+    counter.textContent = len + ' / ' + max;
+    counter.className = 'char-counter' + (len >= max ? ' over' : len >= max * 0.85 ? ' warn' : '');
+    if (len >= max) {
+      field.classList.add('invalid');
+      error.style.display = 'block';
+    } else {
+      field.classList.remove('invalid');
+      error.style.display = 'none';
+    }
+  }
+
+  function validateForm() {
+    let valid = true;
+    const topic = document.getElementById('topic');
+    const info = document.getElementById('additional_info');
+    if (topic.value.trim().length === 0) {
+      topic.classList.add('invalid');
+      document.getElementById('topic-error').textContent = 'Topic is required.';
+      document.getElementById('topic-error').style.display = 'block';
+      valid = false;
+    } else if (topic.value.length > 200) {
+      topic.classList.add('invalid');
+      document.getElementById('topic-error').textContent = 'Topic cannot exceed 200 characters.';
+      document.getElementById('topic-error').style.display = 'block';
+      valid = false;
+    }
+    if (info.value.length > 300) {
+      info.classList.add('invalid');
+      document.getElementById('additional_info-error').style.display = 'block';
+      valid = false;
+    }
+    return valid;
+  }
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!validateForm()) return;
 
     // Reset UI
     result.style.display = 'none';
