@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SlideAI — AI PowerPoint Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --primary: #2B4590;
+      --primary-light: #3D5DB5;
+      --accent: #F5A623;
+      --success: #27AE60;
+      --danger: #E74C3C;
+      --dark: #1A1A2E;
+      --gray: #6B7280;
+      --light: #F5F7FA;
+      --white: #FFFFFF;
+      --border: #E5E7EB;
+      --shadow: 0 4px 24px rgba(43,69,144,0.12);
+      --radius: 16px;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--light);
+      color: var(--dark);
+      min-height: 100vh;
+    }
+
+    /* ── NAV ── */
+    nav {
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      display: flex;
+      align-items: center;
+      height: 64px;
+      gap: 0.5rem;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 1px 8px rgba(0,0,0,0.06);
+    }
+    .logo {
+      font-size: 1.4rem;
+      font-weight: 800;
+      color: var(--primary);
+      letter-spacing: -0.5px;
+    }
+    .logo span { color: var(--accent); }
+    .nav-badge {
+      background: #EEF2FF;
+      color: var(--primary);
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── HERO ── */
+    .hero {
+      background: linear-gradient(135deg, var(--primary) 0%, #3D5DB5 60%, #6C3DC4 100%);
+      padding: 5rem 2rem 4rem;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -80px; right: -80px;
+      width: 400px; height: 400px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.06);
+      pointer-events: none;
+    }
+    .hero::after {
+      content: '';
+      position: absolute;
+      bottom: -60px; left: -60px;
+      width: 300px; height: 300px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.05);
+      pointer-events: none;
+    }
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      font-weight: 800;
+      color: var(--white);
+      line-height: 1.2;
+      margin-bottom: 1rem;
+      letter-spacing: -1px;
+    }
+    .hero h1 .highlight { color: var(--accent); }
+    .hero p {
+      color: rgba(255,255,255,0.8);
+      font-size: 1.1rem;
+      max-width: 560px;
+      margin: 0 auto 2rem;
+      line-height: 1.6;
+    }
+    .hero-features {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .feat-pill {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.25);
+      color: var(--white);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      backdrop-filter: blur(4px);
+    }
+
+    /* ── MAIN CARD ── */
+    .main {
+      max-width: 800px;
+      margin: -2rem auto 4rem;
+      padding: 0 1.5rem;
+    }
+    .card {
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 2rem 2.5rem 0;
+    }
+    .card-header h2 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--dark);
+    }
+    .card-header p {
+      color: var(--gray);
+      font-size: 0.9rem;
+      margin-top: 0.25rem;
+    }
+    .card-body { padding: 1.5rem 2.5rem 2.5rem; }
+
+    /* ── FORM ── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.2rem;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .form-group.full { grid-column: 1 / -1; }
+    label {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--dark);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    input[type="text"],
+    input[type="number"],
+    select,
+    textarea {
+      width: 100%;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      padding: 0.7rem 1rem;
+      font-family: inherit;
+      font-size: 0.95rem;
+      color: var(--dark);
+      background: #FAFBFF;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(43,69,144,0.1);
+      background: var(--white);
+    }
+    textarea { resize: vertical; min-height: 90px; }
+    .slide-count-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    input[type="range"] {
+      flex: 1;
+      accent-color: var(--primary);
+      height: 6px;
+      cursor: pointer;
+    }
+    .range-value {
+      background: var(--primary);
+      color: var(--white);
+      font-size: 0.85rem;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 8px;
+      min-width: 44px;
+      text-align: center;
+    }
+
+    /* ── GENERATE BUTTON ── */
+    .btn-generate {
+      width: 100%;
+      margin-top: 1.8rem;
+      padding: 1rem 2rem;
+      background: linear-gradient(135deg, var(--primary), #3D5DB5);
+      color: var(--white);
+      border: none;
+      border-radius: 12px;
+      font-family: inherit;
+      font-size: 1.05rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      transition: transform 0.15s, box-shadow 0.15s;
+      box-shadow: 0 4px 16px rgba(43,69,144,0.35);
+    }
+    .btn-generate:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(43,69,144,0.4);
+    }
+    .btn-generate:disabled { opacity: 0.65; cursor: not-allowed; transform: none; }
+
+    /* ── LOADING ── */
+    #loading {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      padding: 2.5rem 2rem;
+      background: linear-gradient(135deg, #EEF2FF, #F0F4FF);
+      border-radius: 12px;
+      margin-top: 1.5rem;
+    }
+    .spinner {
+      width: 52px; height: 52px;
+      border: 4px solid rgba(43,69,144,0.15);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--primary);
+    }
+    .loading-steps {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      width: 100%;
+      max-width: 360px;
+    }
+    .step {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-size: 0.88rem;
+      color: var(--gray);
+      padding: 6px 12px;
+      border-radius: 8px;
+      transition: all 0.3s;
+    }
+    .step.active {
+      background: white;
+      color: var(--primary);
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(43,69,144,0.1);
+    }
+    .step.done { color: var(--success); }
+    .step-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      flex-shrink: 0;
+    }
+    .step.active .step-dot { animation: pulse-dot 1s infinite; }
+    @keyframes pulse-dot {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.5); opacity: 0.6; }
+    }
+
+    /* ── RESULT / ERROR ── */
+    #result { display: none; margin-top: 1.5rem; }
+    #error-msg { display: none; margin-top: 1.5rem; }
+
+    .alert {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.8rem;
+      padding: 1rem 1.2rem;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    .alert-success {
+      background: #ECFDF5;
+      border: 1.5px solid #6EE7B7;
+      color: #065F46;
+    }
+    .alert-danger {
+      background: #FEF2F2;
+      border: 1.5px solid #FECACA;
+      color: #991B1B;
+    }
+    .alert-icon { font-size: 1.4rem; line-height: 1; }
+
+    .btn-download {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--success);
+      color: var(--white);
+      padding: 0.8rem 1.6rem;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 700;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      margin-top: 0.75rem;
+      box-shadow: 0 3px 12px rgba(39,174,96,0.35);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .btn-download:hover { transform: translateY(-1px); box-shadow: 0 5px 16px rgba(39,174,96,0.4); }
+
+    /* ── HOW IT WORKS ── */
+    .how-section {
+      max-width: 800px;
+      margin: 0 auto 4rem;
+      padding: 0 1.5rem;
+    }
+    .section-title {
+      text-align: center;
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--dark);
+      margin-bottom: 2rem;
+      letter-spacing: -0.5px;
+    }
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 1.2rem;
+    }
+    .step-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      padding: 1.5rem 1.2rem;
+      text-align: center;
+      box-shadow: 0 2px 12px rgba(43,69,144,0.07);
+      border: 1.5px solid transparent;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .step-card:hover { border-color: var(--primary); transform: translateY(-3px); }
+    .step-num {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), #3D5DB5);
+      color: var(--white);
+      font-weight: 800;
+      font-size: 1.1rem;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 0.8rem;
+    }
+    .step-card h3 { font-size: 0.95rem; font-weight: 700; margin-bottom: 0.4rem; }
+    .step-card p { font-size: 0.82rem; color: var(--gray); line-height: 1.5; }
+
+    /* ── FOOTER ── */
+    footer {
+      background: var(--white);
+      border-top: 1px solid var(--border);
+      text-align: center;
+      padding: 1.5rem;
+      font-size: 0.82rem;
+      color: var(--gray);
+    }
+    footer a { color: var(--primary); text-decoration: none; }
+
+    @media (max-width: 600px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .form-group.full { grid-column: 1; }
+      .card-body, .card-header { padding-left: 1.2rem; padding-right: 1.2rem; }
+      .hero { padding: 3.5rem 1rem 3rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="logo">Slide<span>AI</span></div>
+  <div class="nav-badge">Free</div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <h1>Turn any topic into a<br /><span class="highlight">beautiful presentation</span></h1>
+  <p>Powered by Google Gemini AI. Enter your topic, get a fully designed PowerPoint in seconds — ready to present to students.</p>
+  <div class="hero-features">
+    <span class="feat-pill">✦ AI-generated content</span>
+    <span class="feat-pill">✦ Speaker notes included</span>
+    <span class="feat-pill">✦ Examples &amp; activities</span>
+    <span class="feat-pill">✦ Download as .pptx</span>
+  </div>
+</section>
+
+<!-- MAIN FORM CARD -->
+<main class="main">
+  <div class="card">
+    <div class="card-header">
+      <h2>Generate your presentation</h2>
+      <p>Fill in the details below — takes 15–60 seconds depending on slide count.</p>
+    </div>
+    <div class="card-body">
+      <form id="pptForm">
+        <div class="form-grid">
+
+          <div class="form-group full">
+            <label for="topic">Topic / Subject *</label>
+            <input type="text" id="topic" name="topic" required
+              placeholder="e.g. Climate Change and its Impact on Ecosystems" />
+          </div>
+
+          <div class="form-group">
+            <label for="audience">Target Audience</label>
+            <select id="audience" name="audience">
+              <option value="high school students">High School Students</option>
+              <option value="college students" selected>College / University Students</option>
+              <option value="postgraduate students">Postgraduate Students</option>
+              <option value="working professionals">Working Professionals</option>
+              <option value="general public">General Public</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="num_slides">Number of Content Slides</label>
+            <div class="slide-count-row">
+              <input type="range" id="num_slides" name="num_slides" min="4" max="50" value="15"
+                oninput="document.getElementById('slideVal').textContent = this.value" />
+              <span class="range-value" id="slideVal">15</span>
+            </div>
+          </div>
+
+          <div class="form-group full">
+            <label for="additional_info">Additional Instructions (optional)</label>
+            <textarea id="additional_info" name="additional_info"
+              placeholder="e.g. Focus on renewable energy solutions. Include statistics. Keep it beginner-friendly."></textarea>
+          </div>
+
+        </div>
+
+        <button type="submit" class="btn-generate" id="generateBtn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+          Generate Presentation
+        </button>
+      </form>
+
+      <!-- LOADING STATE -->
+      <div id="loading">
+        <div class="spinner"></div>
+        <div class="loading-title">Crafting your presentation…</div>
+        <ul class="loading-steps">
+          <li class="step active" id="step1"><span class="step-dot"></span> Asking Gemini AI to generate content</li>
+          <li class="step" id="step2"><span class="step-dot"></span> Structuring slides &amp; examples</li>
+          <li class="step" id="step3"><span class="step-dot"></span> Building visual PowerPoint file</li>
+          <li class="step" id="step4"><span class="step-dot"></span> Preparing download</li>
+        </ul>
+      </div>
+
+      <!-- SUCCESS -->
+      <div id="result">
+        <div class="alert alert-success">
+          <span class="alert-icon">🎉</span>
+          <div>
+            <strong>Your presentation is ready!</strong><br />
+            <span style="font-size:0.85rem;font-weight:400;">Open in PowerPoint or Google Slides. Speaker notes are included on every slide.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ERROR -->
+      <div id="error-msg">
+        <div class="alert alert-danger">
+          <span class="alert-icon">⚠️</span>
+          <div>
+            <strong>Something went wrong</strong><br />
+            <span id="errorText" style="font-size:0.85rem;font-weight:400;"></span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<!-- HOW IT WORKS -->
+<section class="how-section">
+  <div class="section-title">How it works</div>
+  <div class="steps-grid">
+    <div class="step-card">
+      <div class="step-num">1</div>
+      <h3>Enter your topic</h3>
+      <p>Describe what you want to teach and who your audience is.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-num">2</div>
+      <h3>AI generates content</h3>
+      <p>Gemini creates structured slides with examples and activities.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-num">3</div>
+      <h3>Download .pptx</h3>
+      <p>Get a fully formatted PowerPoint file instantly.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-num">4</div>
+      <h3>Present &amp; impress</h3>
+      <p>Open in PowerPoint or Google Slides and you're ready to go.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Built with Google Gemini AI &amp; python-pptx &nbsp;·&nbsp;
+  <a href="https://aistudio.google.com" target="_blank" rel="noopener">Get a free Gemini API key</a>
+</footer>
+
+<script>
+  const form = document.getElementById('pptForm');
+  const btn = document.getElementById('generateBtn');
+  const loading = document.getElementById('loading');
+  const result = document.getElementById('result');
+  const errorDiv = document.getElementById('error-msg');
+  const errorText = document.getElementById('errorText');
+  const steps = [
+    document.getElementById('step1'),
+    document.getElementById('step2'),
+    document.getElementById('step3'),
+    document.getElementById('step4'),
+  ];
+
+  let stepTimer = null;
+
+  function advanceSteps() {
+    let current = 0;
+    steps[0].classList.add('active');
+    stepTimer = setInterval(() => {
+      if (current < steps.length - 1) {
+        steps[current].classList.remove('active');
+        steps[current].classList.add('done');
+        steps[current].querySelector('.step-dot').textContent = '';
+        // Replace dot with checkmark
+        current++;
+        steps[current].classList.add('active');
+      }
+    }, 4500);
+  }
+
+  function resetSteps() {
+    clearInterval(stepTimer);
+    steps.forEach(s => {
+      s.classList.remove('active', 'done');
+    });
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    // Reset UI
+    result.style.display = 'none';
+    errorDiv.style.display = 'none';
+    loading.style.display = 'flex';
+    btn.disabled = true;
+    btn.innerHTML = `<div style="width:18px;height:18px;border:2.5px solid rgba(255,255,255,0.4);border-top-color:white;border-radius:50%;animation:spin 0.8s linear infinite;"></div> Generating…`;
+    resetSteps();
+    advanceSteps();
+
+    try {
+      const formData = new FormData(form);
+      const response = await fetch('/generate', {
+        method: 'POST',
+        body: formData,
+      });
+
+      clearInterval(stepTimer);
+
+      if (response.ok) {
+        // Trigger file download
+        const blob = await response.blob();
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = 'presentation.pptx';
+        if (contentDisposition) {
+          const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+          if (match) filename = match[1].replace(/['"]/g, '');
+        }
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        // Show success with re-download option
+        const btnHtml = `<button class="btn-download" onclick="document.querySelector('.btn-download').previousSibling; downloadAgain('${url}','${filename}')">⬇ Download again</button>`;
+        loading.style.display = 'none';
+        result.style.display = 'block';
+
+      } else {
+        const data = await response.json().catch(() => ({ error: 'Unknown server error.' }));
+        throw new Error(data.error || 'Generation failed.');
+      }
+
+    } catch (err) {
+      loading.style.display = 'none';
+      errorDiv.style.display = 'block';
+      errorText.textContent = err.message;
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> Generate Presentation`;
+    }
+  });
+</script>
+</body>
+</html>
