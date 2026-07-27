@@ -381,12 +381,23 @@ def generate():
         )
 
     except json.JSONDecodeError as e:
-        return jsonify({"error": f"AI response could not be parsed. Try again. ({e})"}), 500
+        return jsonify({"error": f"AI returned malformed JSON. Try again. ({e})"}), 500
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
+@app.errorhandler(500)
+def internal_error(e):
+    return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
+
+@app.errorhandler(Exception)
+def unhandled_exception(e):
+    traceback.print_exc()
+    return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(debug=True, port=port)
+    app.run(debug=False, port=port)
