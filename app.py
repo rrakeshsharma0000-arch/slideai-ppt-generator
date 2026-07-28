@@ -338,14 +338,15 @@ def index():
 
 @app.route("/ping")
 def ping():
-    t0 = time.time()
-    try:
-        result = _call_gemini_rest("Reply with the single word: pong", "gemini-3.6-flash")
-        elapsed = round(time.time() - t0, 1)
-        return jsonify({"status": "ok", "reply": result.strip(), "elapsed_s": elapsed})
-    except Exception as e:
-        elapsed = round(time.time() - t0, 1)
-        return jsonify({"status": "error", "error": str(e)[:200], "elapsed_s": elapsed}), 500
+    results = {}
+    for model in ["gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.5-flash"]:
+        t0 = time.time()
+        try:
+            result = _call_gemini_rest("Reply with the single word: pong", model)
+            results[model] = {"ok": True, "elapsed_s": round(time.time() - t0, 1)}
+        except Exception as e:
+            results[model] = {"ok": False, "error": str(e)[:120], "elapsed_s": round(time.time() - t0, 1)}
+    return jsonify(results)
 
 
 @app.route("/generate", methods=["POST"])
