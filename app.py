@@ -48,7 +48,10 @@ GEMINI_REST_URL = "https://generativelanguage.googleapis.com/v1beta/models/{mode
 def _call_gemini_rest(prompt, model):
     url = GEMINI_REST_URL.format(model=model, key=GEMINI_API_KEY)
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    resp = http_requests.post(url, json=payload, timeout=150)
+    t0 = time.time()
+    resp = http_requests.post(url, json=payload, timeout=90)
+    elapsed = round(time.time() - t0, 1)
+    app.logger.info(f"[gemini] model={model} status={resp.status_code} elapsed={elapsed}s")
     if resp.status_code == 429:
         raise Exception(f"429 RESOURCE_EXHAUSTED {resp.text}")
     resp.raise_for_status()
@@ -331,6 +334,18 @@ def create_presentation(data):
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/ping")
+def ping():
+    t0 = time.time()
+    try:
+        result = _call_gemini_rest("Reply with the single word: pong", "gemini-3.6-flash")
+        elapsed = round(time.time() - t0, 1)
+        return jsonify({"status": "ok", "reply": result.strip(), "elapsed_s": elapsed})
+    except Exception as e:
+        elapsed = round(time.time() - t0, 1)
+        return jsonify({"status": "error", "error": str(e)[:200], "elapsed_s": elapsed}), 500
 
 
 @app.route("/generate", methods=["POST"])
