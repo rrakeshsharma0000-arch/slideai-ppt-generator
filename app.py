@@ -107,7 +107,7 @@ Slide type rules:
 Make it educational, clear, and suitable for {audience}.
 Emoji should match the slide topic visually."""
 
-    models = ["gemini-2.0-flash", "gemini-2.0-flash-lite"]
+    models = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-flash-8b"]
     last_err = None
     for model in models:
         for attempt in range(2):
@@ -121,7 +121,8 @@ Emoji should match the slide topic visually."""
                 last_err = e
                 err_str = str(e)
                 if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                    # Extract retry delay if present, default 20s
+                    if "limit: 0" in err_str or "limit_value: 0" in err_str:
+                        break  # quota disabled for this model entirely — skip it immediately
                     delay = 20
                     m = re.search(r"retry.*?(\d+)s", err_str)
                     if m:
@@ -131,6 +132,9 @@ Emoji should match the slide topic visually."""
                         continue  # retry same model
                     break  # try next model
                 raise  # non-rate-limit errors bubble up immediately
+    err_str = str(last_err)
+    if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+        raise Exception("API quota exhausted. Please try again later or contact the administrator.")
     raise last_err
 
 # ─── Slide Helpers ────────────────────────────────────────────────────────────
