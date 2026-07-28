@@ -48,7 +48,7 @@ GEMINI_REST_URL = "https://generativelanguage.googleapis.com/v1beta/models/{mode
 def _call_gemini_rest(prompt, model):
     url = GEMINI_REST_URL.format(model=model, key=GEMINI_API_KEY)
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    resp = http_requests.post(url, json=payload, timeout=80)
+    resp = http_requests.post(url, json=payload, timeout=150)
     if resp.status_code == 429:
         raise Exception(f"429 RESOURCE_EXHAUSTED {resp.text}")
     resp.raise_for_status()
