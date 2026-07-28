@@ -107,7 +107,7 @@ Slide type rules:
 Make it educational, clear, and suitable for {audience}.
 Emoji should match the slide topic visually."""
 
-    models = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.0-flash-lite", "gemini-2.5-flash-lite"]
+    models = ["gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.5-flash"]
     last_err = None
     for model in models:
         for attempt in range(2):
@@ -122,6 +122,11 @@ Emoji should match the slide topic visually."""
                 err_str = str(e)
                 if "404" in err_str or "Not Found" in err_str:
                     break  # model not available — skip to next
+                if "503" in err_str or "currently experiencing" in err_str:
+                    if attempt == 0:
+                        time.sleep(10)
+                        continue
+                    break
                 if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
                     if "limit: 0" in err_str or "limit_value: 0" in err_str:
                         break  # quota disabled for this model entirely — skip it immediately
