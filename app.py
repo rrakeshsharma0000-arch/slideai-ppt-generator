@@ -80,8 +80,7 @@ Return ONLY a JSON object (no markdown, no extra text) with this exact structure
         "Fourth point if needed"
       ],
       "example": "One concrete real-world example that makes this tangible",
-      "visual_description": "Chart or diagram idea for this slide",
-      "speaker_notes": "2-3 sentence presenter guide for this slide"
+      "speaker_notes": "1-2 sentence presenter guide"
     }}
   ],
   "key_takeaways": [
@@ -128,16 +127,7 @@ Emoji should match the slide topic visually."""
                         continue
                     break
                 if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                    if "limit: 0" in err_str or "limit_value: 0" in err_str:
-                        break  # quota disabled for this model entirely — skip it immediately
-                    delay = 20
-                    m = re.search(r"retry.*?(\d+)s", err_str)
-                    if m:
-                        delay = min(int(m.group(1)) + 2, 30)
-                    if attempt == 0:
-                        time.sleep(delay)
-                        continue  # retry same model
-                    break  # try next model
+                    break  # skip to next model immediately — don't sleep
                 raise  # non-rate-limit errors bubble up immediately
     err_str = str(last_err)
     if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
