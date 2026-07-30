@@ -49,7 +49,7 @@ def _call_gemini_rest(prompt, model):
     url = GEMINI_REST_URL.format(model=model, key=GEMINI_API_KEY)
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     t0 = time.time()
-    resp = http_requests.post(url, json=payload, timeout=90)
+    resp = http_requests.post(url, json=payload, timeout=45)
     elapsed = round(time.time() - t0, 1)
     app.logger.info(f"[gemini] model={model} status={resp.status_code} elapsed={elapsed}s")
     if resp.status_code == 429:
@@ -109,7 +109,7 @@ Slide type rules:
 Make it educational, clear, and suitable for {audience}.
 Emoji should match the slide topic visually."""
 
-    models = ["gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.5-flash"]
+    models = ["gemini-3.6-flash", "gemini-flash-lite-latest"]
     last_err = None
     for model in models:
         for attempt in range(2):
@@ -338,15 +338,12 @@ def index():
 
 @app.route("/ping")
 def ping():
-    results = {}
-    for model in ["gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.5-flash"]:
-        t0 = time.time()
-        try:
-            result = _call_gemini_rest("Reply with the single word: pong", model)
-            results[model] = {"ok": True, "elapsed_s": round(time.time() - t0, 1)}
-        except Exception as e:
-            results[model] = {"ok": False, "error": str(e)[:120], "elapsed_s": round(time.time() - t0, 1)}
-    return jsonify(results)
+    t0 = time.time()
+    try:
+        result = _call_gemini_rest("Reply with the single word: pong", "gemini-3.6-flash")
+        return jsonify({"status": "ok", "reply": result.strip(), "elapsed_s": round(time.time() - t0, 1)})
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)[:200], "elapsed_s": round(time.time() - t0, 1)}), 500
 
 
 @app.route("/generate", methods=["POST"])
