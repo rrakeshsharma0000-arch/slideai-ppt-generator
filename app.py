@@ -8,7 +8,6 @@ import traceback
 import socket
 import threading
 import uuid
-import base64
 
 socket.setdefaulttimeout(180)
 
@@ -83,33 +82,45 @@ def _wants_images(additional_info):
     return any(kw in lower for kw in _IMAGE_KEYWORDS)
 
 
-def _try_generate_image(prompt):
-    """Call Gemini image generation. Returns PNG/JPEG bytes, or None on failure."""
+def _try_fetch_image(query):
+    """Fetch a relevant photo from Pexels. Returns image bytes, or None on failure."""
+    pexels_key = os.getenv("PEXELS_API_KEY")
+    if not pexels_key:
+        app.logger.warning("[img] PEXELS_API_KEY not set — skipping image")
+        return None
     try:
-        url = GEMINI_REST_URL.format(model="gemini-3.1-flash-image", key=GEMINI_API_KEY)
-        payload = {
-            "contents": [{"parts": [{"text": (
-                f"Create a clean, colorful, flat educational illustration: {prompt}. "
-                "No text or labels inside the image. Simple, minimal style. "
-                "Suitable as a visual aid on a presentation slide."
-            )}]}],
-            "generationConfig": {"responseModalities": ["IMAGE"]},
-        }
+        import urllib.parse
+        search_url = (
+            "https://api.pexels.com/v1/search"
+            f"?query={urllib.parse.quote(query)}&per_page=3&orientation=landscape"
+        )
         session = http_requests.Session()
         try:
-            resp = session.post(url, json=payload, timeout=30, headers={"Connection": "close"})
+            resp = session.get(search_url, headers={"Authorization": pexels_key,
+                                                     "Connection": "close"}, timeout=15)
         finally:
             session.close()
         if not resp.ok:
-            app.logger.warning(f"[img] {resp.status_code}: {resp.text[:120]}")
+            app.logger.warning(f"[img] Pexels search {resp.status_code}: {resp.text[:120]}")
             return None
-        parts = resp.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
-        for part in parts:
-            if "inlineData" in part:
-                return base64.b64decode(part["inlineData"]["data"])
+        photos = resp.json().get("photos", [])
+        if not photos:
+            app.logger.warning(f"[img] Pexels: no results for '{query}'")
+            return None
+        img_url = photos[0]["src"].get("large") or photos[0]["src"].get("medium")
+        if not img_url:
+            return None
+        session2 = http_requests.Session()
+        try:
+            img_resp = session2.get(img_url, timeout=30, headers={"Connection": "close"})
+        finally:
+            session2.close()
+        if img_resp.ok:
+            app.logger.info(f"[img] Pexels OK: {len(img_resp.content)//1024}KB for '{query}'")
+            return img_resp.content
         return None
     except Exception as e:
-        app.logger.warning(f"[img] generation failed: {e}")
+        app.logger.warning(f"[img] Pexels failed: {e}")
         return None
 
 
@@ -516,7 +527,7 @@ def generate():
                         break
                     if slide.get("type") == "content" and slide.get("image_prompt"):
                         app.logger.info(f"[job:{job_id[:8]}] generating image: {slide['image_prompt'][:50]}")
-                        img_bytes = _try_generate_image(slide["image_prompt"])
+                        img_bytes = _try_fetch_image(slide["image_prompt"])
                         if img_bytes:
                             slide["image_bytes"] = img_bytes
                             img_count += 1
