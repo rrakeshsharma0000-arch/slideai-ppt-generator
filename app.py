@@ -8,6 +8,7 @@ import traceback
 import socket
 import threading
 import uuid
+import base64
 
 socket.setdefaulttimeout(180)
 
@@ -73,6 +74,45 @@ H = Inches(7.5)
 GEMINI_REST_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
 
 
+_IMAGE_KEYWORDS = ("image", "picture", "photo", "visual", "illustration", "graphic", "figure")
+
+def _wants_images(additional_info):
+    if not additional_info:
+        return False
+    lower = additional_info.lower()
+    return any(kw in lower for kw in _IMAGE_KEYWORDS)
+
+
+def _try_generate_image(prompt):
+    """Call Gemini image generation. Returns PNG/JPEG bytes, or None on failure."""
+    try:
+        url = GEMINI_REST_URL.format(model="gemini-3.1-flash-image", key=GEMINI_API_KEY)
+        payload = {
+            "contents": [{"parts": [{"text": (
+                f"Create a clean, colorful, flat educational illustration: {prompt}. "
+                "No text or labels inside the image. Simple, minimal style. "
+                "Suitable as a visual aid on a presentation slide."
+            )}]}],
+            "generationConfig": {"responseModalities": ["IMAGE"]},
+        }
+        session = http_requests.Session()
+        try:
+            resp = session.post(url, json=payload, timeout=30, headers={"Connection": "close"})
+        finally:
+            session.close()
+        if not resp.ok:
+            app.logger.warning(f"[img] {resp.status_code}: {resp.text[:120]}")
+            return None
+        parts = resp.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
+        for part in parts:
+            if "inlineData" in part:
+                return base64.b64decode(part["inlineData"]["data"])
+        return None
+    except Exception as e:
+        app.logger.warning(f"[img] generation failed: {e}")
+        return None
+
+
 def _call_gemini_rest(prompt, model):
     url = GEMINI_REST_URL.format(model=model, key=GEMINI_API_KEY)
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -91,6 +131,12 @@ def _call_gemini_rest(prompt, model):
 
 
 def generate_ppt_content(topic, audience, num_slides, additional_info):
+    add_image_field = _wants_images(additional_info)
+    image_field_schema = (
+        '\n      "image_prompt": "concise 6-10 word visual description for a flat illustration of this slide\'s main concept",'
+        if add_image_field else ""
+    )
+
     prompt = f"""Create a comprehensive, engaging PowerPoint presentation for:
 
 Topic: {topic}
@@ -107,7 +153,7 @@ Return ONLY a JSON object (no markdown, no extra text) with this exact structure
     {{
       "title": "Slide Title",
       "type": "content",
-      "emoji": "📌",
+      "emoji": "📌",{image_field_schema}
       "key_points": [
         "Concise point, max 15 words",
         "Another clear point",
@@ -263,30 +309,61 @@ def _content_slide(prs, slide_data):
     _rect(slide, 0, 0, W, H, C["white"])
     _header(slide, f"{slide_data.get('emoji','📌')}  {slide_data['title']}")
 
-    points  = slide_data.get("key_points", [])[:5]
-    example = slide_data.get("example", "")
+    points      = slide_data.get("key_points", [])[:5]
+    example     = slide_data.get("example", "")
+    image_bytes = slide_data.get("image_bytes")
     n = max(1, len(points))
 
-    # Dynamic font + spacing so bullets fill the available area
-    if n <= 2:
-        fsize, spc = Pt(28), Pt(26)
-    elif n == 3:
-        fsize, spc = Pt(25), Pt(22)
-    elif n == 4:
-        fsize, spc = Pt(23), Pt(18)
-    else:
-        fsize, spc = Pt(21), Pt(14)
+    if image_bytes:
+        # Two-column: text left (7.2" wide), image right (5.1" wide)
+        text_w = Inches(7.2)
+        img_x  = Inches(7.7)
+        img_w  = Inches(5.1)
 
-    if example:
-        # Bullets take upper 4.2", example panel fills the bottom 1.45"
-        _bullets_textbox(slide, Inches(0.6), Inches(1.55), Inches(12.1), Inches(4.2),
-                         points, fsize, C["dark"], space_after=spc, space_before=spc)
-        _rect(slide, 0, Inches(5.85), W, Inches(1.55), C["panel"])
-        _textbox(slide, Inches(0.65), Inches(6.0), Inches(12.0), Inches(1.3),
-                 f"💡  Example:   {example}", 18, C["primary"], bold=False, italic=True, wrap=True)
+        if n <= 2:
+            fsize, spc = Pt(26), Pt(22)
+        elif n == 3:
+            fsize, spc = Pt(23), Pt(18)
+        elif n == 4:
+            fsize, spc = Pt(21), Pt(14)
+        else:
+            fsize, spc = Pt(19), Pt(10)
+
+        if example:
+            _bullets_textbox(slide, Inches(0.5), Inches(1.55), text_w, Inches(4.0),
+                             points, fsize, C["dark"], space_after=spc, space_before=spc)
+            _rect(slide, 0, Inches(5.65), Inches(7.5), Inches(1.75), C["panel"])
+            _textbox(slide, Inches(0.55), Inches(5.8), Inches(6.9), Inches(1.5),
+                     f"💡  {example}", 15, C["primary"], bold=False, italic=True, wrap=True)
+        else:
+            _bullets_textbox(slide, Inches(0.5), Inches(1.55), text_w, Inches(5.7),
+                             points, fsize, C["dark"], space_after=spc, space_before=spc)
+
+        try:
+            slide.shapes.add_picture(io.BytesIO(image_bytes), img_x, Inches(1.6), img_w, Inches(5.2))
+        except Exception as ex:
+            app.logger.warning(f"[img] embed failed: {ex}")
+
     else:
-        _bullets_textbox(slide, Inches(0.6), Inches(1.55), Inches(12.1), Inches(5.7),
-                         points, fsize, C["dark"], space_after=spc, space_before=spc)
+        # Original full-width layout
+        if n <= 2:
+            fsize, spc = Pt(28), Pt(26)
+        elif n == 3:
+            fsize, spc = Pt(25), Pt(22)
+        elif n == 4:
+            fsize, spc = Pt(23), Pt(18)
+        else:
+            fsize, spc = Pt(21), Pt(14)
+
+        if example:
+            _bullets_textbox(slide, Inches(0.6), Inches(1.55), Inches(12.1), Inches(4.2),
+                             points, fsize, C["dark"], space_after=spc, space_before=spc)
+            _rect(slide, 0, Inches(5.85), W, Inches(1.55), C["panel"])
+            _textbox(slide, Inches(0.65), Inches(6.0), Inches(12.0), Inches(1.3),
+                     f"💡  Example:   {example}", 18, C["primary"], bold=False, italic=True, wrap=True)
+        else:
+            _bullets_textbox(slide, Inches(0.6), Inches(1.55), Inches(12.1), Inches(5.7),
+                             points, fsize, C["dark"], space_after=spc, space_before=spc)
 
     _rect(slide, 0, Inches(7.4), W, Inches(0.1), C["secondary"])
     _notes(slide, slide_data.get("speaker_notes", ""))
@@ -430,6 +507,21 @@ def generate():
             t0 = time.time()
             ppt_data = generate_ppt_content(topic, audience, num_slides, additional_info)
             app.logger.info(f"[job:{job_id[:8]}] AI done in {round(time.time()-t0,1)}s")
+
+            # Generate images for up to 3 content slides when user requested them
+            if _wants_images(additional_info) and ppt_data.get("slides"):
+                img_count = 0
+                for slide in ppt_data["slides"]:
+                    if img_count >= 3:
+                        break
+                    if slide.get("type") == "content" and slide.get("image_prompt"):
+                        app.logger.info(f"[job:{job_id[:8]}] generating image: {slide['image_prompt'][:50]}")
+                        img_bytes = _try_generate_image(slide["image_prompt"])
+                        if img_bytes:
+                            slide["image_bytes"] = img_bytes
+                            img_count += 1
+                app.logger.info(f"[job:{job_id[:8]}] images={img_count}")
+
             safe = re.sub(r"[^a-zA-Z0-9 ]", "", ppt_data.get("title", topic))[:40]
             filename = safe.strip().replace(" ", "_") + ".pptx"
             buf = create_presentation(ppt_data)
