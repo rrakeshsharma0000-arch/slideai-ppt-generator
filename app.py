@@ -6,8 +6,10 @@ import re
 import time
 import traceback
 import socket
+import threading
+import uuid
 
-socket.setdefaulttimeout(60)  # hard OS-level timeout for all network sockets
+socket.setdefaulttimeout(60)
 
 import requests as http_requests
 from flask import Flask, render_template, request, send_file, jsonify
@@ -22,6 +24,29 @@ load_dotenv()
 app = Flask(__name__)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+# ─── Job store ────────────────────────────────────────────────────────────────
+_jobs = {}
+_jobs_lock = threading.Lock()
+
+def _store_job(job_id, data):
+    with _jobs_lock:
+        _jobs[job_id] = data
+
+def _get_job(job_id):
+    with _jobs_lock:
+        return _jobs.get(job_id)
+
+def _pop_job(job_id):
+    with _jobs_lock:
+        return _jobs.pop(job_id, None)
+
+def _cleanup_jobs():
+    cutoff = time.time() - 600
+    with _jobs_lock:
+        stale = [k for k, v in _jobs.items() if v.get("ts", 0) < cutoff]
+        for k in stale:
+            del _jobs[k]
 
 # ─── Palette ──────────────────────────────────────────────────────────────────
 
@@ -355,52 +380,72 @@ def ping():
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    req_start = time.time()
-    try:
-        if not GEMINI_API_KEY:
-            return jsonify({"error": "GEMINI_API_KEY is not set. Add it to your .env file."}), 500
+    if not GEMINI_API_KEY:
+        return jsonify({"error": "GEMINI_API_KEY is not set."}), 500
 
-        topic = (request.form.get("topic") or "").strip()[:200]
-        if not topic:
-            return jsonify({"error": "Please enter a topic."}), 400
+    topic = (request.form.get("topic") or "").strip()[:200]
+    if not topic:
+        return jsonify({"error": "Please enter a topic."}), 400
 
-        audience = request.form.get("audience", "college students").strip()
-        num_slides = max(4, min(int(request.form.get("num_slides", 10)), 30))
-        # Cap additional_info to avoid inflating the prompt and causing timeouts
-        additional_info = (request.form.get("additional_info") or "").strip()[:300]
+    audience = request.form.get("audience", "college students").strip()
+    num_slides = max(4, min(int(request.form.get("num_slides", 10)), 30))
+    additional_info = (request.form.get("additional_info") or "").strip()[:300]
 
-        t_ai = time.time()
-        ppt_data = generate_ppt_content(topic, audience, num_slides, additional_info)
-        app.logger.info(f"[generate] AI done in {round(time.time()-t_ai,1)}s")
+    job_id = uuid.uuid4().hex
+    _store_job(job_id, {"status": "pending", "ts": time.time()})
 
-        safe = re.sub(r"[^a-zA-Z0-9 ]", "", ppt_data.get("title", topic))[:40]
-        filename = safe.strip().replace(" ", "_") + ".pptx"
+    def _run():
+        try:
+            t0 = time.time()
+            ppt_data = generate_ppt_content(topic, audience, num_slides, additional_info)
+            app.logger.info(f"[job:{job_id[:8]}] AI done in {round(time.time()-t0,1)}s")
+            safe = re.sub(r"[^a-zA-Z0-9 ]", "", ppt_data.get("title", topic))[:40]
+            filename = safe.strip().replace(" ", "_") + ".pptx"
+            buf = create_presentation(ppt_data)
+            del ppt_data
+            gc.collect()
+            app.logger.info(f"[job:{job_id[:8]}] total={round(time.time()-t0,1)}s")
+            _store_job(job_id, {"status": "done", "data": buf.getvalue(), "filename": filename, "ts": time.time()})
+        except Exception as e:
+            traceback.print_exc()
+            msg = str(e)
+            if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
+                err = "API rate limit reached. Please wait a moment and try again."
+            elif "quota" in msg.lower():
+                err = "Daily API quota exceeded. Please try again tomorrow."
+            elif "timed out" in msg.lower() or "timeout" in msg.lower():
+                err = "The AI took too long to respond. Please try again with fewer slides."
+            elif "json" in msg.lower():
+                err = "AI returned an unexpected response. Please try again."
+            else:
+                err = "Something went wrong. Please try again."
+            _store_job(job_id, {"status": "error", "error": err, "ts": time.time()})
 
-        t_pptx = time.time()
-        buf = create_presentation(ppt_data)
-        app.logger.info(f"[generate] PPTX built in {round(time.time()-t_pptx,1)}s | total={round(time.time()-req_start,1)}s")
-        del ppt_data
-        gc.collect()
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"job_id": job_id})
 
-        return send_file(
-            buf,
-            mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            as_attachment=True,
-            download_name=filename,
-        )
 
-    except json.JSONDecodeError:
-        return jsonify({"error": "AI returned an unexpected response. Please try again."}), 500
-    except Exception as e:
-        traceback.print_exc()
-        msg = str(e)
-        if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
-            return jsonify({"error": "API rate limit reached. Please wait a minute and try again."}), 429
-        if "quota" in msg.lower():
-            return jsonify({"error": "Daily API quota exceeded. Try again tomorrow or use a different API key."}), 429
-        if "API_KEY" in msg or "api key" in msg.lower():
-            return jsonify({"error": "Invalid or missing Gemini API key."}), 500
-        return jsonify({"error": "Something went wrong generating your presentation. Please try again."}), 500
+@app.route("/status/<job_id>")
+def job_status(job_id):
+    _cleanup_jobs()
+    job = _get_job(job_id)
+    if not job:
+        return jsonify({"status": "not_found"}), 404
+    return jsonify({"status": job["status"], "error": job.get("error", "")})
+
+
+@app.route("/download/<job_id>")
+def job_download(job_id):
+    job = _pop_job(job_id)
+    if not job or job["status"] != "done":
+        return jsonify({"error": "File not ready or already downloaded. Please generate again."}), 404
+    buf = io.BytesIO(job["data"])
+    return send_file(
+        buf,
+        mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        as_attachment=True,
+        download_name=job.get("filename", "presentation.pptx"),
+    )
 
 
 @app.errorhandler(500)

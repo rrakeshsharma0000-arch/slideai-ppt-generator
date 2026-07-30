@@ -650,7 +650,6 @@
     e.preventDefault();
     if (!validateForm()) return;
 
-    // Reset UI
     result.style.display = 'none';
     errorDiv.style.display = 'none';
     loading.style.display = 'flex';
@@ -660,47 +659,42 @@
     advanceSteps();
 
     try {
+      // Submit job — returns immediately with a job_id
       const formData = new FormData(form);
-      const response = await fetch('/generate', {
-        method: 'POST',
-        body: formData,
-      });
-
-      clearInterval(stepTimer);
-
-      if (response.ok) {
-        // Trigger file download
-        const blob = await response.blob();
-        const contentDisposition = response.headers.get('Content-Disposition');
-        let filename = 'presentation.pptx';
-        if (contentDisposition) {
-          const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-          if (match) filename = match[1].replace(/['"]/g, '');
-        }
-
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
-
-        // Show success with re-download option
-        const btnHtml = `<button class="btn-download" onclick="document.querySelector('.btn-download').previousSibling; downloadAgain('${url}','${filename}')">⬇ Download again</button>`;
-        loading.style.display = 'none';
-        result.style.display = 'block';
-
-      } else {
-        let errMsg = `Server error (HTTP ${response.status}).`;
-        try {
-          const text = await response.text();
-          const data = JSON.parse(text);
-          errMsg = data.error || errMsg;
-        } catch (_) { /* non-JSON response, keep default */ }
-        throw new Error(errMsg);
+      const submitResp = await fetch('/generate', { method: 'POST', body: formData });
+      if (!submitResp.ok) {
+        const d = await submitResp.json().catch(() => ({}));
+        throw new Error(d.error || `Server error (HTTP ${submitResp.status})`);
       }
+      const { job_id } = await submitResp.json();
+
+      // Poll /status/<job_id> every 2s until done or error
+      const maxWaitMs = 5 * 60 * 1000; // 5 min ceiling
+      const started = Date.now();
+      while (Date.now() - started < maxWaitMs) {
+        await new Promise(r => setTimeout(r, 2000));
+        const statusResp = await fetch(`/status/${job_id}`);
+        const s = await statusResp.json();
+        if (s.status === 'done') {
+          clearInterval(stepTimer);
+          // Trigger download via hidden link
+          const a = document.createElement('a');
+          a.href = `/download/${job_id}`;
+          a.download = '';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          loading.style.display = 'none';
+          result.style.display = 'block';
+          return;
+        }
+        if (s.status === 'error') throw new Error(s.error || 'Generation failed.');
+        if (s.status === 'not_found') throw new Error('Session expired. Please try again.');
+      }
+      throw new Error('Generation timed out. Please try with fewer slides.');
 
     } catch (err) {
+      clearInterval(stepTimer);
       loading.style.display = 'none';
       errorDiv.style.display = 'block';
       errorText.textContent = err.message;

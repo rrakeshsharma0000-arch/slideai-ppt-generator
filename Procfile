@@ -1,1 +1,1 @@
-web: gunicorn app:app --timeout 300 --workers 1 --max-requests 10 --max-requests-jitter 3
+web: gunicorn app:app --timeout 30 --workers 1 --max-requests 500 --max-requests-jitter 50
