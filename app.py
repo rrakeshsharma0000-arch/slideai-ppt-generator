@@ -9,7 +9,7 @@ import socket
 import threading
 import uuid
 
-socket.setdefaulttimeout(60)
+socket.setdefaulttimeout(180)
 
 import requests as http_requests
 from flask import Flask, render_template, request, send_file, jsonify
@@ -79,7 +79,7 @@ def _call_gemini_rest(prompt, model):
     t0 = time.time()
     session = http_requests.Session()
     try:
-        resp = session.post(url, json=payload, timeout=55, headers={"Connection": "close"})
+        resp = session.post(url, json=payload, timeout=170, headers={"Connection": "close"})
     finally:
         session.close()
     elapsed = round(time.time() - t0, 1)
