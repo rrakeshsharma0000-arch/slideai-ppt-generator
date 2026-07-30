@@ -5,7 +5,9 @@ import json
 import re
 import time
 import traceback
-import concurrent.futures
+import socket
+
+socket.setdefaulttimeout(60)  # hard OS-level timeout for all network sockets
 
 import requests as http_requests
 from flask import Flask, render_template, request, send_file, jsonify
@@ -50,21 +52,11 @@ def _call_gemini_rest(prompt, model):
     url = GEMINI_REST_URL.format(model=model, key=GEMINI_API_KEY)
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     t0 = time.time()
-
-    def _do_post():
-        return http_requests.post(url, json=payload,
-                                  timeout=40,
-                                  headers={"Connection": "close"})
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(_do_post)
-        try:
-            resp = future.result(timeout=42)
-        except concurrent.futures.TimeoutError:
-            elapsed = round(time.time() - t0, 1)
-            app.logger.error(f"[gemini] model={model} HARD TIMEOUT after {elapsed}s")
-            raise Exception(f"Gemini {model} timed out after {elapsed}s")
-
+    session = http_requests.Session()
+    try:
+        resp = session.post(url, json=payload, timeout=55, headers={"Connection": "close"})
+    finally:
+        session.close()
     elapsed = round(time.time() - t0, 1)
     app.logger.info(f"[gemini] model={model} status={resp.status_code} elapsed={elapsed}s")
     if resp.status_code == 429:
