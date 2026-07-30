@@ -5,6 +5,7 @@ import json
 import re
 import time
 import traceback
+import concurrent.futures
 
 import requests as http_requests
 from flask import Flask, render_template, request, send_file, jsonify
@@ -49,7 +50,21 @@ def _call_gemini_rest(prompt, model):
     url = GEMINI_REST_URL.format(model=model, key=GEMINI_API_KEY)
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     t0 = time.time()
-    resp = http_requests.post(url, json=payload, timeout=45)
+
+    def _do_post():
+        return http_requests.post(url, json=payload,
+                                  timeout=40,
+                                  headers={"Connection": "close"})
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_do_post)
+        try:
+            resp = future.result(timeout=42)
+        except concurrent.futures.TimeoutError:
+            elapsed = round(time.time() - t0, 1)
+            app.logger.error(f"[gemini] model={model} HARD TIMEOUT after {elapsed}s")
+            raise Exception(f"Gemini {model} timed out after {elapsed}s")
+
     elapsed = round(time.time() - t0, 1)
     app.logger.info(f"[gemini] model={model} status={resp.status_code} elapsed={elapsed}s")
     if resp.status_code == 429:
@@ -348,6 +363,7 @@ def ping():
 
 @app.route("/generate", methods=["POST"])
 def generate():
+    req_start = time.time()
     try:
         if not GEMINI_API_KEY:
             return jsonify({"error": "GEMINI_API_KEY is not set. Add it to your .env file."}), 500
@@ -361,11 +377,16 @@ def generate():
         # Cap additional_info to avoid inflating the prompt and causing timeouts
         additional_info = (request.form.get("additional_info") or "").strip()[:300]
 
+        t_ai = time.time()
         ppt_data = generate_ppt_content(topic, audience, num_slides, additional_info)
+        app.logger.info(f"[generate] AI done in {round(time.time()-t_ai,1)}s")
+
         safe = re.sub(r"[^a-zA-Z0-9 ]", "", ppt_data.get("title", topic))[:40]
         filename = safe.strip().replace(" ", "_") + ".pptx"
 
+        t_pptx = time.time()
         buf = create_presentation(ppt_data)
+        app.logger.info(f"[generate] PPTX built in {round(time.time()-t_pptx,1)}s | total={round(time.time()-req_start,1)}s")
         del ppt_data
         gc.collect()
 
